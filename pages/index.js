@@ -1,10 +1,57 @@
 import Head from 'next/head'
+import { useEffect, useRef } from 'react';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import { read, utils, write } from 'xlsx';
 import JSZip from 'jzip';
 import styles from '../styles/Home.module.css'
 
 export default function Home() {
-  function handleFiles(e) {
+  const pdfFiles = useRef(null);
+  const workbook = useRef(null);
+  // useEffect(() => {
+  //   fetch('/api/hello')
+  //     .then((res) => res.json())
+  //     .then((data) => {
+  //       console.log(data);
+  //     })
+  // }, [])
+
+  function handleTagging() {
+    if (workbook.current) {
+      const wb = workbook.current;
+      const ws = wb.Sheets[wb.SheetNames[0]]
+      const data = utils.sheet_to_json(ws, { header:"A" });
+      console.log(data);
+
+      pdfFiles.current.forEach((pdf) => {
+        data.forEach((row, index) => {
+          if (row.I === pdf.fileName || row.I === pdf.fileName.split(".pdf")[0]) {
+            console.log("found ", pdf.fileName)
+            data[index].J = pdf.id;
+          }
+        })
+      })
+      console.log(data);
+      const moddedSheet = utils.json_to_sheet(data);
+      // wb.Sheets[wb.SheetNames[0]] = moddedSheet;
+      workbook.current = wb;
+      //  writeFileXLSX(wb, "invoices.xlsx")
+      compressFiles();
+
+    }
+  }
+
+  function handleExcel(e) {
+    const file = e.target.files[0];
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const bstr = event.target.result;
+      workbook.current = read(bstr);
+    }
+    reader.readAsArrayBuffer(file);
+  }
+
+  function handlePdfs(e) {
     const fileArr = [];
     const files = e.currentTarget.files;
     const promise = new Promise((resolve) => {
@@ -13,7 +60,8 @@ export default function Home() {
         const reader = new FileReader();
         reader.onload = async (e) => {
           if (e.target.result) {
-            const modified = await modifyPdf(e.target.result, i);
+            console.log(file);
+            const modified = await modifyPdf(e.target.result, i, file.name);
             fileArr.push(modified);
             if (fileArr.length === files.length) {
               resolve(fileArr);
@@ -24,13 +72,14 @@ export default function Home() {
       })
     })
     promise.then(function(fileArrResult){
-      compressFiles(fileArrResult)
+      pdfFiles.current = fileArrResult;
+      // compressFiles(fileArrResult)
     });
   };
 
-  async function modifyPdf(existingPdfBytes, i) {
+  async function modifyPdf(existingPdfBytes, i, fileName) {
     const pdfDoc = await PDFDocument.load(existingPdfBytes)
-    const helveticaFont = await pdfDoc.embedFont(StandardFonts.TimesRoman)
+    const font = await pdfDoc.embedFont(StandardFonts.TimesRoman)
     const pages = pdfDoc.getPages()
     const firstPage = pages[0]
     const index = parseInt(i) + 1;
@@ -38,33 +87,37 @@ export default function Home() {
     const { height } = firstPage.getSize()
     const fontSize = 30
     firstPage.drawText(id, {
+      font,
       x: 5 + fontSize,
       y: height - fontSize - 5,
       size: 25,
-      font: helveticaFont,
       color: rgb(0, 0, 0),
     });
     const pdfBytes = await pdfDoc.save()
     return {
       id,
+      fileName,
       blob: new Blob([pdfBytes], { type: "application/pdf" }),
       binary: pdfBytes,
     };
   }
 
   function download(blob, fileName) {
-    var link = document.createElement('a');
+    const link = document.createElement('a');
     link.href = window.URL.createObjectURL(blob);
     link.download = fileName;
     link.click();
   }
 
-  function compressFiles(files) {
+  function compressFiles() {
     const zip = new JSZip();
-    files.forEach((file) => {
-      zip.file(file.id + ".pdf", file.binary, {binary: true})
+    pdfFiles.current.forEach((file) => {
+      zip.folder("invoices").file(file.fileName, file.binary, { binary: true })
     });
-    download(zip.generate({type:"blob"}), "taggedInvoices.zip")
+    const wb = workbook.current;
+    const excelFile = write(wb, { type: "binary" });
+    zip.file("excel.xlsx", excelFile, { binary: true });
+    download(zip.generate({type:"blob"}), "taggedInvoices.zip");
   }
 
   return (
@@ -76,12 +129,34 @@ export default function Home() {
       </Head>
 
       <main className={styles.main}>
-        <div>
-          <label htmlFor="file-upload" />
-          <input onChange={handleFiles} type="file" id="file-upload" name="file-upload"
-           multiple />
+        <div className='input-container'>
+          <label htmlFor="excel-upload">Excel:&nbsp;</label>
+          <input onChange={handleExcel} type="file" id="excel-upload" name="excel-upload"
+            accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" />
+        </div>
+        <div className='input-container'>
+          <label htmlFor="file-upload">PDFs:&nbsp;</label>
+          <input onChange={handlePdfs} type="file" id="file-upload" name="file-upload"
+           multiple accept=".pdf" />
+        </div>
+        <div className='input-container'>
+          <button onClick={handleTagging} className='magic-button'>Do magic</button>
         </div>
       </main>
+      <style jsx>{`
+        .input-container {
+          margin-top: 30px;
+        }
+        .magic-button {
+          background-color: blue;
+          color: white;
+          outline: none;
+          border: 2px solid white;
+          padding: 10px 15px;
+          font-family: cursive;
+          font-size: 36px;
+        }
+      `}</style>
     </div>
   )
 }
