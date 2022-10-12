@@ -21,23 +21,35 @@ export default function Home() {
       const wb = workbook.current;
       const ws = wb.Sheets[wb.SheetNames[0]]
       const data = utils.sheet_to_json(ws, { header:"A" });
-      console.log("data before:", data);
+      // console.log("data before:", data);
 
-      pdfFiles.current.forEach((pdf) => {
-        data.forEach((row, index) => {
-          if (row.I === pdf.fileName || row.I === pdf.fileName.split(".pdf")[0]) {
-            data[index].J = pdf.id;
-            console.log(`Added ${pdf.id} to ${pdf.fileName} on cell J${index+1}`);
-          }
-        })
+      data.forEach((row, index) => {
+        if (row.I && typeof row.I === "string") {
+          const searchFor = row.I.trim();
+          pdfFiles.current.forEach((pdf, pdfIndex) => {
+            if (searchFor === pdf.fileName.trim()
+              || searchFor === pdf.fileName.trim().split(".pdf")[0]) {
+                pdfFiles.current[pdfIndex].foundACell = true;
+              data[index].J = pdf.id;
+              // console.log(`Added ${pdf.id} to ${pdf.fileName} on cell J${index+1}`);
+              // console.log(`${pdfIndex + 1} pdfs of ${pdfFiles.current.length} added to excel`)
+            }
+          })
+        }        
+      });
+      let withoutCells = ""
+      pdfFiles.current.forEach((pdf, i) => {
+        if (!pdf.foundACell) withoutCells += `${i === 0 ? pdf.fileName : `, ${pdf.fileName}`}`
       })
-      console.log("data after:", data);
-      const moddedSheet = utils.json_to_sheet(data);
-      wb.Sheets[wb.SheetNames[0]] = moddedSheet;
-      workbook.current = wb;
-
-      compressFiles();
-
+      if (withoutCells !== "") {
+        alert(`The following invoices did not have a reference in the excel file: ${withoutCells}`)
+      } else {
+        const moddedSheet = utils.json_to_sheet(data);
+        wb.Sheets[wb.SheetNames[0]] = moddedSheet;
+        workbook.current = wb;
+  
+        compressFiles();
+      }
     }
   }
 
@@ -61,7 +73,7 @@ export default function Home() {
         reader.onload = async (e) => {
           if (e.target.result) {
             const modified = await modifyPdf(e.target.result, i, file.name);
-            console.log(`labelled ${file.name} as ${modified.id}`)
+            // console.log(`labelled ${file.name} as ${modified.id}`)
             fileArr.push(modified);
             if (fileArr.length === files.length) {
               resolve(fileArr);
@@ -99,6 +111,7 @@ export default function Home() {
       fileName,
       blob: new Blob([pdfBytes], { type: "application/pdf" }),
       binary: pdfBytes,
+      foundACell: false,
     };
   }
 
@@ -112,12 +125,12 @@ export default function Home() {
   function compressFiles() {
     const zip = new JSZip();
     pdfFiles.current.forEach((file) => {
-      console.log("adding to zip files:", file.fileName)
+      // console.log("adding to zip files:", file.fileName)
       zip.folder("invoices").file(file.fileName, file.binary, { binary: true })
     });
     const wb = workbook.current;
     const excelFile = write(wb, { type: "binary" });
-    console.log("zipping excel file:", "expenses.xlsx")
+    // console.log("zipping excel file:", "expenses.xlsx")
     zip.file("expenses.xlsx", excelFile, { binary: true });
     download(zip.generate({type:"blob"}), "taggedInvoices.zip");
   }
