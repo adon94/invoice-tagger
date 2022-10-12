@@ -1,5 +1,5 @@
 import Head from 'next/head'
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { read, utils, write } from 'xlsx';
 import JSZip from 'jzip';
@@ -8,6 +8,8 @@ import styles from '../styles/Home.module.css'
 export default function Home() {
   const pdfFiles = useRef(null);
   const workbook = useRef(null);
+  const [showDownload, setShowDownload] = useState(false);
+  const [showMagic, setShowMagic] = useState(false);
   // useEffect(() => {
   //   fetch('/api/hello')
   //     .then((res) => res.json())
@@ -15,6 +17,16 @@ export default function Home() {
   //       console.log(data);
   //     })
   // }, [])
+
+  useEffect(() => {
+    console.log(pdfFiles)
+    console.log(workbook)
+    if (pdfFiles.current && workbook.current) {
+      setShowMagic(true);
+    } else {
+      setShowMagic(false);
+    }
+  }, [pdfFiles, workbook])
 
   function handleTagging() {
     if (workbook.current) {
@@ -39,17 +51,18 @@ export default function Home() {
       });
       let withoutCells = ""
       pdfFiles.current.forEach((pdf, i) => {
-        if (!pdf.foundACell) withoutCells += `${i === 0 ? pdf.fileName : `, ${pdf.fileName}`}`
+        if (!pdf.foundACell) withoutCells += `\n - ${pdf.fileName}`
       })
       if (withoutCells !== "") {
         alert(`The following invoices did not have a reference in the excel file: ${withoutCells}`)
-      } else {
-        const moddedSheet = utils.json_to_sheet(data);
-        wb.Sheets[wb.SheetNames[0]] = moddedSheet;
-        workbook.current = wb;
-  
-        compressFiles();
       }
+      const moddedSheet = utils.json_to_sheet(data);
+      wb.Sheets[wb.SheetNames[0]] = moddedSheet;
+      workbook.current = wb;
+  
+        // compressFiles();
+      setShowDownload(true);
+      setShowMagic(false);
     }
   }
 
@@ -59,6 +72,10 @@ export default function Home() {
     reader.onload = (event) => {
       const bstr = event.target.result;
       workbook.current = read(bstr);
+
+      if (pdfFiles.current) {
+        setShowMagic(true);
+      }
     }
     reader.readAsArrayBuffer(file);
   }
@@ -85,6 +102,10 @@ export default function Home() {
     })
     promise.then(function(fileArrResult){
       pdfFiles.current = fileArrResult;
+
+      if (workbook.current) {
+        setShowMagic(true);
+      }
       // compressFiles(fileArrResult)
     });
   };
@@ -154,9 +175,12 @@ export default function Home() {
           <input onChange={handlePdfs} type="file" id="file-upload" name="file-upload"
            multiple accept=".pdf" />
         </div>
-        <div className='input-container'>
+        {showMagic && <div className='input-container'>
           <button onClick={handleTagging} className='magic-button'>Do magic</button>
-        </div>
+        </div>}
+        {showDownload && <div className='input-container'>
+          <button onClick={compressFiles} className='magic-button dl'>Download Zip</button>
+        </div>}
       </main>
       <style jsx>{`
         .input-container {
@@ -170,6 +194,10 @@ export default function Home() {
           padding: 10px 15px;
           font-family: cursive;
           font-size: 36px;
+          cursor: pointer;
+        }
+        .dl {
+          background-color: green;
         }
       `}</style>
     </div>
