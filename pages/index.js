@@ -1,5 +1,5 @@
 import Head from 'next/head'
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { read, utils, write } from 'xlsx';
 import JSZip from 'jzip';
@@ -21,21 +21,21 @@ export default function Home() {
       const wb = workbook.current;
       const ws = wb.Sheets[wb.SheetNames[0]]
       const data = utils.sheet_to_json(ws, { header:"A" });
-      console.log(data);
+      console.log("data before:", data);
 
       pdfFiles.current.forEach((pdf) => {
         data.forEach((row, index) => {
           if (row.I === pdf.fileName || row.I === pdf.fileName.split(".pdf")[0]) {
-            console.log("found ", pdf.fileName)
             data[index].J = pdf.id;
+            console.log(`Added ${pdf.id} to ${pdf.fileName} on cell J${index+1}`);
           }
         })
       })
-      console.log(data);
+      console.log("data after:", data);
       const moddedSheet = utils.json_to_sheet(data);
-      // wb.Sheets[wb.SheetNames[0]] = moddedSheet;
+      wb.Sheets[wb.SheetNames[0]] = moddedSheet;
       workbook.current = wb;
-      //  writeFileXLSX(wb, "invoices.xlsx")
+
       compressFiles();
 
     }
@@ -60,8 +60,8 @@ export default function Home() {
         const reader = new FileReader();
         reader.onload = async (e) => {
           if (e.target.result) {
-            console.log(file);
             const modified = await modifyPdf(e.target.result, i, file.name);
+            console.log(`labelled ${file.name} as ${modified.id}`)
             fileArr.push(modified);
             if (fileArr.length === files.length) {
               resolve(fileArr);
@@ -112,11 +112,13 @@ export default function Home() {
   function compressFiles() {
     const zip = new JSZip();
     pdfFiles.current.forEach((file) => {
+      console.log("adding to zip files:", file.fileName)
       zip.folder("invoices").file(file.fileName, file.binary, { binary: true })
     });
     const wb = workbook.current;
     const excelFile = write(wb, { type: "binary" });
-    zip.file("excel.xlsx", excelFile, { binary: true });
+    console.log("zipping excel file:", "expenses.xlsx")
+    zip.file("expenses.xlsx", excelFile, { binary: true });
     download(zip.generate({type:"blob"}), "taggedInvoices.zip");
   }
 
